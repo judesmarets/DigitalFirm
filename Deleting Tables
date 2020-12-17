@@ -1,0 +1,9 @@
+import pandas as pd
+import sqlite3
+import requests
+
+conn = sqlite3.connect("C:/Users/julie/Documents/Databases/Forex.db")
+
+cur = conn.cursor()
+
+cur.execute('''DROP VIEW transview''')
