@@ -1,0 +1,53 @@
+import pandas as pd
+import json
+import requests
+import sqlite3
+import numpy as np
+
+def exponential_smoothing(series, alpha = 0.5):
+    result = np.full(len(series) + 1, np.NaN)
+    result[1] = series[0]
+    for idx in range(2, len(series) + 1):
+        result[idx] = alpha * series[idx - 1] + \
+        (1 - alpha) * result[idx - 1]
+    return result[-1]
+
+def get_currencies():
+    currencies = "USD,GBP,BRL,SEK,THB"
+    api_url = 'http://api.frankfurter.app/2020-01-01..?to=' + currencies
+    headers = {'Content-Type': 'application/json'}
+    response = requests.get(api_url, headers=headers)
+    return (response)
+
+def add_forecast(df):
+    columns = df.columns
+    next_row = {'Date':''}
+    for column in columns[1:]:
+        next_row[column] = exponential_smoothing(df[column])
+    print(next_row)
+    df = df.append(next_row, ignore_index=True)
+    return (df)
+
+def create_df(currencies):
+    df = pd.DataFrame(currencies.json()['rates']).T
+    df.insert(0, 'Date', '')
+    df['Date'] = df.index
+    df.reset_index(inplace=True, drop=True)
+    return (df)
+
+conn = sqlite3.connect('TestDB1.db')
+c = conn.cursor()
+
+currencies_values = get_currencies()
+df = create_df(currencies_values)
+df = add_forecast(df)
+print(df)
+
+df.to_sql('CURR_RATES', conn, if_exists='replace', index = False)
+
+c.execute('''
+SELECT * FROM CURR_RATES
+          ''')
+
+for row in c.fetchall():
+    print (row)
