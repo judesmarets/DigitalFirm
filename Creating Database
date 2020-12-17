@@ -1,0 +1,61 @@
+import pandas as pd
+import sqlite3
+import requests
+
+conn = sqlite3.connect("C:/Users/julie/Documents/Databases/Forex.db")
+
+cur = conn.cursor()
+
+
+#query = "select * from currencies where currSelection = 'TRUE';"
+
+cur.execute('''CREATE TABLE if not exists currencies (
+    currCode      VARCHAR (3)   PRIMARY KEY
+                                UNIQUE
+                                NOT NULL,
+    description   VARCHAR (255) NOT NULL,
+    currSelection VARCHAR (5)   DEFAULT (False) 
+                                NOT NULL
+)
+WITHOUT ROWID; ''')
+
+response = requests.get("http://api.frankfurter.app/currencies")
+file = response.json()
+okcurr = ['BRL', 'GBP', 'SEK', 'THB', 'USD']
+for key,value in file.items():
+    if key in okcurr:
+        dict = {'currCode':key, 'description':value, 'currSelection':'TRUE'}
+    else:
+        dict = {'currCode':key, 'description':value, 'currSelection':'FALSE'}
+    cur.execute('''INSERT INTO currencies
+                    (currCode, description, currSelection)
+                    VALUES
+                    (:currCode, :description, :currSelection);''', dict)
+    conn.commit()
+        
+#pd.read_sql_query(query, conn)
+
+cur.execute('''CREATE TABLE if not exists transactions (
+    date           DATE            PRIMARY KEY
+                                   NOT NULL
+                                   UNIQUE,
+    currCode                       REFERENCES currencies (currCode) 
+                                   NOT NULL,
+    actualRate     DECIMAL (10, 5),
+    source         VARCHAR (20),
+    forecastedRate DECIMAL (10, 5),
+    forecastError  DECIMAL (10, 5) 
+)
+WITHOUT ROWID;''')
+
+cur.execute('''CREATE VIEW if not exists transview AS
+    SELECT transactions.date,
+           transactions.currCode,
+           currencies.description,
+           transactions.actualRate,
+           transactions.forecastedRate,
+           transactions.forecastError
+      FROM transactions,
+           currencies;
+
+''')
