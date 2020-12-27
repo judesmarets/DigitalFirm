@@ -4,7 +4,7 @@ import requests
 import numpy as np
 
 #connecting to DB
-conn = sqlite3.connect("C:/Users/julie/Documents/Databases/ForexTest02.db")
+conn = sqlite3.connect("C:/Users/julie/Documents/Databases/ForexTest03.db")
 
 #creating cursor
 cur = conn.cursor()
@@ -75,7 +75,7 @@ for key,value in ratesfile.items():
             date = key
             for key,value in dict2.items():
                 dict3 = {'date':date, 'currCode':key, 'actualRate':value, 'source': 'FrankfurterAPI'}
-                cur.execute('''INSERT INTO transactions
+                cur.execute('''INSERT OR REPLACE INTO transactions
                             (date, currCode, actualRate, source)
                             VALUES
                             (:date, :currCode, :actualRate, :source);''', dict3)
@@ -85,7 +85,7 @@ for key,value in ratesfile.items():
 query = "select * from transactions order by date;"
 test = pd.read_sql_query(query, conn)
 
-def insert_forcast(a, date, currCode, arr_mean):
+def insert_forecast(a, date, currCode, arr_mean):
     #print(date)
     mean = np.mean(a['actualRate'])
     #print(a)
@@ -124,7 +124,7 @@ for index, row in test.iterrows() :
     #print("index : " + str(i))
     #i = (t[t.index == index].index)[0]
     #print(t[i-arr_mean:i])
-    insert_forcast(t[i-arr_mean:i], row['date'], row['currCode'], arr_mean)
+    insert_forecast(t[i-arr_mean:i], row['date'], row['currCode'], arr_mean)
 
     
 update_error()
