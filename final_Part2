@@ -5,7 +5,7 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 #connecting to DB
-conn = sqlite3.connect("C:/Users/julie/Documents/Databases/ForexTest02.db")
+conn = sqlite3.connect("C:/Users/julie/Documents/Databases/ForexTest03.db")
 
 #creating cursor
 cur = conn.cursor()
@@ -42,13 +42,13 @@ dr1 = pd.DataFrame(new_dict)
 
 def insert_webscr(date_wb, curr_wb, rate):
     #print(date_wb, curr_wb, rate)
-    cur.execute('''INSERT into transactions(date, currCode, actualRate, source)
+    cur.execute('''INSERT OR REPLACE into transactions(date, currCode, actualRate, source)
                     VALUES( ? , ? , ? , 'Webscraping');''', (date_wb, curr_wb, rate))
                     
     conn.commit()
 
     
-def insert_forcast(a, date, currCode, arr_mean):
+def insert_forecast(a, date, currCode, arr_mean):
     #print(date)
     mean = np.mean(a['actualRate'])
     #print(a)
@@ -58,22 +58,23 @@ def insert_forcast(a, date, currCode, arr_mean):
         cur.execute(update_sql)
         conn.commit()
         
-def update_error():
+def update_error_wb():
     cur.execute("select * from transactions")
     data = cur.fetchall()
     # print(data)
     for x in data:
         list = [x[0],x[1],x[2],x[3],x[4],x[5]]
-    #     print(list)
+#         print(list)
     #     if list[4] == None:
     #         print('nok')
-        try:
-            error = np.subtract(list[2],list[4])
-    #         print(error)
-            cur.execute("UPDATE transactions SET forecastError = " + str(error) + " where date = '" + list[0] + "' and currCode = '" + list[1] + "'")
-            conn.commit()
-        except:
-            pass
+        if x[0] == dateStr:
+            try:
+                error = np.subtract(list[2],list[4])
+        #         print(error)
+                cur.execute("UPDATE transactions SET forecastError = " + str(error) + " where date = '" + list[0] + "' and currCode = '" + list[1] + "'")
+                conn.commit()
+            except:
+                pass
 
 for index,row in dr1.iterrows():
     if row['Name'] in curr:
@@ -96,6 +97,6 @@ for index, row in test.iterrows() :
     #print(t[i-arr_mean:i])
     if row['date'] == dateStr:
 #         print('ok')
-        insert_forcast(t[i-arr_mean:i], row['date'], row['currCode'], arr_mean)
+        insert_forecast(t[i-arr_mean:i], row['date'], row['currCode'], arr_mean)
     
-update_error()
+update_error_wb()
