@@ -1,0 +1,83 @@
+import requests
+import numpy as np
+import pandas as pd
+from datetime import datetime
+from bs4 import BeautifulSoup
+
+conn = sqlite3.connect("C:/Users/julie/Documents/Databases/NameYourDB.db")
+
+cur = conn.cursor()
+
+ecb_page = requests.get('https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html')
+list1=[]
+list=[]
+curr = ['USD', 'THB', 'SEK', 'GBP', 'BRL']
+dateTimeObj = datetime.now()
+dateObj = dateTimeObj.date()
+dateStr = dateObj.strftime("%Y-%m-%d")
+new=[]
+new_dict = {}
+page = BeautifulSoup(ecb_page.content, 'html.parser')
+
+tds = page.findAll('span', class_='rate')
+tdp = page.findAll('td', class_='currency')
+
+for td in tds:
+    a = td.text
+    list.append(a)
+
+for tr in tdp:
+    sr = tr.find('a').text
+    list1.append(sr)
+for i in range(len(list1)):
+    new.append(list1[i])
+    new.append(list[i])
+
+new_dict["Name"] = list1
+new_dict["Value"] = list
+
+dr1 = pd.DataFrame(new_dict)
+
+def insert_webscr(date_wb, curr_wb, rate):
+    cur.execute('''INSERT OR REPLACE into transactions(date, currCode, actualRate, source)
+                    VALUES( ? , ? , ? , 'Webscraping');''', (date_wb, curr_wb, rate))
+                    
+    conn.commit()
+
+    
+def insert_forecast(a, date, currCode, arr_mean):
+    mean = np.mean(a['actualRate'])
+    if (a.size >= arr_mean) :
+        update_sql = "update transactions set forecastedRate = " + str(mean) + " where date = '" + date + "' and currCode = '" + currCode + "'"
+        cur.execute(update_sql)
+        conn.commit()
+        
+def update_error_wb():
+    cur.execute("select * from transactions")
+    data = cur.fetchall()
+    for x in data:
+        list = [x[0],x[1],x[2],x[3],x[4],x[5]]
+        if x[0] == dateStr:
+            try:
+                error = np.subtract(list[2],list[4])
+                cur.execute("UPDATE transactions SET forecastError = " + str(error) + " where date = '" + list[0] + "' and currCode = '" + list[1] + "'")
+                conn.commit()
+            except:
+                pass
+
+for index,row in dr1.iterrows():
+    if row['Name'] in curr:
+        insert_webscr(dateStr, row['Name'], row['Value'])
+        
+query = "select * from transactions order by date;"
+test = pd.read_sql_query(query, conn)
+        
+arr_mean = 3
+for index, row in test.iterrows() :
+    t = test[test['currCode']==row['currCode']]
+    t.reset_index(drop=True, inplace=True)
+    i = t[(t['date']==row['date']) & (t['currCode']==row['currCode'])].index[0]
+    if row['date'] == dateStr:
+        insert_forecast(t[i-arr_mean:i], row['date'], row['currCode'], arr_mean)
+    
+update_error_wb()
