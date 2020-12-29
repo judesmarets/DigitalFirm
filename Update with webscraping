@@ -15,7 +15,6 @@ curr = ['USD', 'THB', 'SEK', 'GBP', 'BRL']
 dateTimeObj = datetime.now()
 dateObj = dateTimeObj.date()
 dateStr = dateObj.strftime("%Y-%m-%d")
-new=[]
 new_dict = {}
 page = BeautifulSoup(ecb_page.content, 'html.parser')
 
@@ -29,9 +28,6 @@ for td in tds:
 for tr in tdp:
     sr = tr.find('a').text
     list1.append(sr)
-for i in range(len(list1)):
-    new.append(list1[i])
-    new.append(list[i])
 
 new_dict["Name"] = list1
 new_dict["Value"] = list
