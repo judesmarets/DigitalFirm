@@ -19,7 +19,6 @@ curr = ['USD', 'THB', 'SEK', 'GBP', 'BRL'] #listing the currencies we are intere
 dateTimeObj = datetime.now() #getting the time of today
 dateObj = dateTimeObj.date()
 dateStr = dateObj.strftime("%Y-%m-%d") #formating the date to match the format of the DB
-new=[]
 new_dict = {}
 page = BeautifulSoup(ecb_page.content, 'html.parser') #we are going to use BeautifulSoup to parse the html and find the infos we need 
 
@@ -33,9 +32,6 @@ for td in tds:
 for tr in tdp:
     sr = tr.find('a').text #getting each currency code
     list1.append(sr) #adding it to the list
-for i in range(len(list1)):
-    new.append(list1[i])
-    new.append(list[i])
 
 #creating dict with the currency codes and their rates
 new_dict["Name"] = list1
