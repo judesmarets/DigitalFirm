@@ -1,0 +1,132 @@
+#importing neccessary packages (sometimes pip install required in cmd)
+import pandas as pd
+import sqlite3
+import requests
+import numpy as np
+
+#creating and naming databases at specific location
+conn = sqlite3.connect("C:/Users/julie/Documents/Databases/NameYourDB.db")
+
+#creating cursor for the database
+cur = conn.cursor()
+
+#creating the first table from our design
+cur.execute('''CREATE TABLE if not exists currencies (
+    currCode      VARCHAR (3)   PRIMARY KEY
+                                UNIQUE ON CONFLICT IGNORE
+                                NOT NULL,
+    description   VARCHAR (255) NOT NULL,
+    currSelection VARCHAR (5)   DEFAULT (False) 
+                                NOT NULL
+)
+WITHOUT ROWID; ''')
+
+#loading our first table with data from the API
+response = requests.get("http://api.frankfurter.app/currencies")
+file = response.json() #storing infos from the API as a dictionnary
+okcurr = ['BRL', 'GBP', 'SEK', 'THB', 'USD'] #listing the currencies we are interested in
+#storing each key, value pair into a new dictionary and then inserting it into the DB
+for key,value in file.items():
+    if key in okcurr:
+        dict = {'currCode':key, 'description':value, 'currSelection':'TRUE'} #TRUE for currencies we are interested in
+    else:
+        dict = {'currCode':key, 'description':value, 'currSelection':'FALSE'} #FALSE for the other ones (possibility to change it later if needed)
+    #dict is overwritten for each key,value and then inserted into the DB
+    cur.execute('''INSERT INTO currencies
+                    (currCode, description, currSelection)
+                    VALUES
+                    (:currCode, :description, :currSelection);''', dict) #values vary so we need to tell where they come from
+    conn.commit() #saving our changes
+        
+
+#creating our second table 
+cur.execute('''CREATE TABLE if not exists transactions (
+    date           DATE            NOT NULL,
+    currCode                       REFERENCES currencies (currCode) 
+                                   NOT NULL,
+    actualRate     DECIMAL (10, 5),
+    source         VARCHAR (20),
+    forecastedRate DECIMAL (10, 5),
+    forecastError  DECIMAL (10, 5), 
+    PRIMARY KEY (date, currCode)
+)
+WITHOUT ROWID; ''')
+
+#creating a view to avoid making this JOIN several times later on (in the end we did not use it but it could have been useful)
+cur.execute('''CREATE VIEW if not exists transview AS
+    SELECT transactions.date,
+           transactions.currCode,
+           currencies.description,
+           transactions.actualRate,
+           transactions.source,
+           transactions.forecastedRate,
+           transactions.forecastError
+      FROM transactions
+           INNER JOIN
+           currencies ON (transactions.currCode = currencies.currCode);
+
+''')
+
+#loading the historical rates from the API
+rates = requests.get("http://api.frankfurter.app/2020-01-01..2020-12-28?to=USD,GBP,BRL,SEK,THB") #here we choose the currencies that we are interested in and the period for which we need the rates
+ratesfile = rates.json() #we store the json file as a dictionary. We probably do not use the most efficient parsing method but it worked last time
+
+#only difference this time is that we have nested dictionaries therefore we need to do the same operation multiple times to obtain a dictionnary with the date
+#the currency code, the actual rate of the day, and the source. Once we have that dictionary we are going to insert it into our database and repeat this process for each date
+for key,value in ratesfile.items():
+    if key == 'rates':
+        dict1 = value
+        for key, value in dict1.items():
+            dict2 = value
+            date = key
+            for key,value in dict2.items():
+                dict3 = {'date':date, 'currCode':key, 'actualRate':value, 'source': 'FrankfurterAPI'}
+                cur.execute('''INSERT OR REPLACE INTO transactions
+                            (date, currCode, actualRate, source)
+                            VALUES
+                            (:date, :currCode, :actualRate, :source);''', dict3)
+                conn.commit()
+                
+#now we need to update our database with the forecasts we would have obtained with our forecasting method. We used a MA3 but our code allows to do every moving average 
+#by simply changing 1 line
+query = "select * from transactions order by date;"
+test = pd.read_sql_query(query, conn) #we will need this query later to change our indexing
+
+#Here we define how we calculate and insert our forecast but it is easier to understand by reading the part where we change the indexing first
+#therefore, I invite you to skip to that part and come back here later
+def insert_forecast(a, date, currCode, arr_mean): #Great, you're back !
+    mean = np.mean(a['actualRate']) #for each group of rows we are going to use a numpy function that returns the mean of an array
+    if (a.size >= arr_mean) : #we make sure that we have 3 dates in each array which is not the case for the first dates in our DB
+        #and we update ou DB with the field 'forecastedRate' = AVG( of the last 3 'actualRate')
+        update_sql = "update transactions set forecastedRate = " + str(mean) + " where date = '" + date + "' and currCode = '" + currCode + "'"
+        cur.execute(update_sql) #we execute our update
+        conn.commit() #and we save it
+
+#Up next : The Error 
+#this one was easier than the forecast
+def update_error():
+    cur.execute("select * from transactions") #let's query our whole table with the forecasts 
+    data = cur.fetchall() #and save that list of tuple
+    for x in data:
+        list = [x[0],x[1],x[2],x[3],x[4],x[5]] #and let's store each tuple as a list (maybe not neccessary but we know how to make it work with a list)
+        try:
+            error = np.subtract(list[2],list[4]) #we define the error using a numpy function again but a substraction this time
+            #for each row we update the DB with the corresponding error
+            cur.execute("UPDATE transactions SET forecastError = " + str(error) + " where date = '" + list[0] + "' and currCode = '" + list[1] + "'")
+            conn.commit() #and we hit 'save'
+        except:
+            pass
+
+#Welcome to the indexing part
+#When we inserted data in the DB it was ordered by date and then currency but we need a separated index for each currency in order to calculate our moving average
+arr_mean = 3 #here we can choose the parameter of our moving average (MA3 in this case)
+for index, row in test.iterrows() : #our query named "test" is back
+    t = test[test['currCode']==row['currCode']] #we create t, a pandas dataframe (which is a table that we can modify easily) and group our data by currency
+    t.reset_index(drop=True, inplace=True) #and we reset the index, we now have separate indexes for each currency
+    i = t[(t['date']==row['date']) & (t['currCode']==row['currCode'])].index[0] #we define i as our index number for our date odered by currency then by date
+    insert_forecast(t[i-arr_mean:i], row['date'], row['currCode'], arr_mean) #we group our rows by 3 (arr_mean defined above) rows with following dates and the same currency code
+    #and we apply our insert_forecast function for each group of 3 rows
+    #we can go back to the definition now
+
+    
+update_error() #it's nice to define a function but if we need to use it then
