@@ -1,6 +1,7 @@
 #the 2 codes work independently so we import again and with new packages for the webscraping (pip install also needed)
 import requests
 import numpy as np
+import sqlite3
 import pandas as pd
 from datetime import datetime
 from bs4 import BeautifulSoup
